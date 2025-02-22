@@ -83,15 +83,42 @@ func runClient(cmd *cobra.Command, args []string) error {
 
 	// Step 9: Send the file name
 	fileName := filepath.Base(filePath)
-	if err := sendDataLength(conn, len(fileName)); err != nil {
-		return fmt.Errorf("failed to send file name length: %w", err)
+	block, err := aes.NewCipher(aesKey)
+	if err != nil {
+		return err
 	}
-	if _, err := conn.Write([]byte(fileName)); err != nil {
-		return fmt.Errorf("failed to send file name: %w", err)
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return err
+	}
+	nonceFileName := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonceFileName); err != nil {
+		return err
+	}
+	encryptedFileName := gcm.Seal(nil, nonceFileName, []byte(fileName), nil)
+
+	// Send the length of the nonce for the file name
+	nonceFileNameLength := len(nonceFileName)
+	if _, err := conn.Write([]byte(fmt.Sprintf("%06d", nonceFileNameLength))); err != nil {
+		return err
+	}
+	// Send the nonce for the file name
+	if _, err := conn.Write(nonceFileName); err != nil {
+		return err
+	}
+
+	// Send the length of the encrypted file name
+	encryptedFileNameLength := len(encryptedFileName)
+	if _, err := conn.Write([]byte(fmt.Sprintf("%06d", encryptedFileNameLength))); err != nil {
+		return err
+	}
+	// Send the encrypted file name
+	if _, err := conn.Write(encryptedFileName); err != nil {
+		return err
 	}
 
 	// Step 10: Initialize AES encryption in OFB mode
-	block, err := aes.NewCipher(aesKey)
+	block, err = aes.NewCipher(aesKey)
 	if err != nil {
 		return fmt.Errorf("failed to create AES cipher: %w", err)
 	}

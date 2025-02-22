@@ -1,3 +1,6 @@
 *.exe
 pico
 .vscode/
+out/
+private.pem
+public.pem

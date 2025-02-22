@@ -85,24 +85,63 @@ func handleConnection(conn net.Conn, privateKey interface{}, outputDir string) {
 		return
 	}
 
-	// Step 5: Read the length of the file name
-	if _, err := io.ReadFull(conn, lengthBytes); err != nil {
-		fmt.Println("Error reading file name length:", err)
+	// Read the length of the nonce for the file name
+	nonceFileNameLengthBytes := make([]byte, 6)
+	if _, err := io.ReadFull(conn, nonceFileNameLengthBytes); err != nil {
+		fmt.Println("Error reading nonce for file name length:", err)
 		return
 	}
-	length, err = strconv.Atoi(string(lengthBytes))
+	nonceFileNameLengthStr := string(nonceFileNameLengthBytes)
+	nonceFileNameLength, err := strconv.Atoi(nonceFileNameLengthStr)
 	if err != nil {
-		fmt.Println("Error converting file name length to integer:", err)
+		fmt.Println("Error converting nonce for file name length to integer:", err)
 		return
 	}
 
-	// Step 6: Read the file name
-	fileNameBytes := make([]byte, length)
-	if _, err := io.ReadFull(conn, fileNameBytes); err != nil {
-		fmt.Println("Error reading file name:", err)
+	// Read the nonce for the file name
+	nonceFileName := make([]byte, nonceFileNameLength)
+	if _, err := io.ReadFull(conn, nonceFileName); err != nil {
+		fmt.Println("Error reading nonce for file name:", err)
 		return
 	}
-	fileName := string(fileNameBytes)
+
+	// Read the length of the encrypted file name
+	encryptedFileNameLengthBytes := make([]byte, 6)
+	if _, err := io.ReadFull(conn, encryptedFileNameLengthBytes); err != nil {
+		fmt.Println("Error reading encrypted file name length:", err)
+		return
+	}
+	encryptedFileNameLengthStr := string(encryptedFileNameLengthBytes)
+	encryptedFileNameLength, err := strconv.Atoi(encryptedFileNameLengthStr)
+	if err != nil {
+		fmt.Println("Error converting encrypted file name length to integer:", err)
+		return
+	}
+
+	// Read the encrypted file name
+	encryptedFileName := make([]byte, encryptedFileNameLength)
+	if _, err := io.ReadFull(conn, encryptedFileName); err != nil {
+		fmt.Println("Error reading encrypted file name:", err)
+		return
+	}
+
+	// Decrypt the file name
+	block, err := aes.NewCipher(aesKey)
+	if err != nil {
+		fmt.Println("Error creating AES cipher:", err)
+		return
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		fmt.Println("Error creating GCM cipher:", err)
+		return
+	}
+	decryptedFileName, err := gcm.Open(nil, nonceFileName, encryptedFileName, nil)
+	if err != nil {
+		fmt.Println("Error decrypting file name:", err)
+		return
+	}
+	fileName := string(decryptedFileName)
 
 	// Step 7: Read the 16-byte IV for OFB mode
 	nonceEnc := make([]byte, aes.BlockSize)
@@ -112,7 +151,7 @@ func handleConnection(conn net.Conn, privateKey interface{}, outputDir string) {
 	}
 
 	// Step 8: Initialize AES decryption in OFB mode
-	block, err := aes.NewCipher(aesKey)
+	block, err = aes.NewCipher(aesKey)
 	if err != nil {
 		fmt.Println("Error creating AES cipher:", err)
 		return
